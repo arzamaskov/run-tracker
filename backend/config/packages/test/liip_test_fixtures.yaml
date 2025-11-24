@@ -1,0 +1,4 @@
+liip_test_fixtures:
+    keep_database_and_schema: true   # НЕ пересоздавать БД и схемы
+    cache_db: true                   # (опционально) быстрее, не трогает схему
+    cache_metadata: true             # (опционально) быстрее
