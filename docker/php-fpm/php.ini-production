@@ -1,0 +1,33 @@
+[Date]
+date.timezone = UTC
+
+[Performance]
+memory_limit = 256M
+max_execution_time = 30
+max_input_time = 60
+
+[Upload]
+upload_max_filesize = 10M
+post_max_size = 10M
+
+[OPcache - Production]
+opcache.enable = 1
+opcache.enable_cli = 0
+opcache.memory_consumption = 256
+opcache.interned_strings_buffer = 16
+opcache.max_accelerated_files = 20000
+opcache.revalidate_freq = 60
+opcache.validate_timestamps = 0
+opcache.fast_shutdown = 1
+opcache.save_comments = 0
+opcache.enable_file_override = 1
+
+[Error Reporting - Production]
+display_errors = Off
+display_startup_errors = Off
+error_reporting = E_ALL & ~E_DEPRECATED & ~E_STRICT
+log_errors = On
+error_log = /proc/self/fd/2
+
+[Security - Production]
+expose_php = Off

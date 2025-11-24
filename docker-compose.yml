@@ -1,0 +1,58 @@
+# Base Docker Compose Configuration (Production-ready)
+# For development: docker-compose up (auto-loads docker-compose.override.yml)
+# For production: docker-compose -f docker-compose.yml up
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-app}
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - runtracker_network
+    restart: unless-stopped
+
+  php-fpm:
+    build:
+      context: ./docker/php-fpm
+      target: ${BUILD_TARGET:-production}
+    volumes:
+      - ./backend:/var/www/backend
+    environment:
+      APP_ENV: ${APP_ENV:-prod}
+      APP_DEBUG: ${APP_DEBUG:-0}
+      XDEBUG_MODE: ${XDEBUG_MODE:-off}
+      PHP_IDE_CONFIG: "serverName=run-tracker"
+    working_dir: /var/www/backend
+    networks:
+      - runtracker_network
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    volumes:
+      - ./backend:/var/www/backend
+      # Switch nginx config based on environment
+      - ./docker/nginx/${NGINX_CONFIG:-default.conf}:/etc/nginx/conf.d/default.conf
+      # Mount frontend build in production (noop in dev if doesn't exist)
+      - ${FRONTEND_BUILD_PATH:-./frontend}:/var/www/frontend/build:ro
+    networks:
+      - runtracker_network
+    depends_on:
+      - php-fpm
+    restart: unless-stopped
+
+networks:
+  runtracker_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local

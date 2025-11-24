@@ -1,0 +1,47 @@
+# Git
+.git
+.gitignore
+.github
+
+# Documentation
+*.md
+!README.md
+docs/
+
+# Backend
+backend/var/
+backend/vendor/
+backend/.env.local
+backend/.env.*.local
+
+# Frontend
+frontend/node_modules/
+frontend/.svelte-kit/
+frontend/build/
+frontend/.env
+frontend/.env.*
+.pnpm-store/
+
+# Docker
+docker/postgres/data/
+docker-compose.yml
+docker-compose.override.yml
+docker-compose.prod.yml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Tests
+backend/tests/
+frontend/tests/
+*.test.ts
+*.test.js
+*.spec.ts
+*.spec.js

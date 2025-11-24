@@ -1,0 +1,8 @@
+# Docker production build
+FROM nginx:alpine
+
+# Copy production nginx config
+COPY docker/nginx/production.conf /etc/nginx/conf.d/default.conf
+
+# This will be mounted or copied during deployment
+# The frontend build files should be in /var/www/frontend/build

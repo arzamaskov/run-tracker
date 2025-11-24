@@ -1,0 +1,25 @@
+# Development Overrides
+# Automatically loaded when running: docker-compose up
+
+services:
+  postgres:
+    # Expose postgres in dev for external tools
+    ports:
+      - "5432:5432"
+
+  php-fpm:
+    build:
+      target: development
+
+  # Frontend dev server (Vite) - only in development
+  frontend:
+    build:
+      context: ./docker/frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+    environment:
+      NODE_ENV: development
+    networks:
+      - runtracker_network
