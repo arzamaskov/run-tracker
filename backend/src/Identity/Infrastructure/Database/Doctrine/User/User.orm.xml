@@ -1,0 +1,22 @@
+<doctrine-mapping xmlns="http://doctrine-project.org/schemas/orm/doctrine-mapping"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  xsi:schemaLocation="http://doctrine-project.org/schemas/orm/doctrine-mapping
+                          https://www.doctrine-project.org/schemas/orm/doctrine-mapping.xsd">
+    <entity
+        name="App\Identity\Domain\Entity\User"
+        schema="identity"
+        table="users"
+        repository-class="App\Identity\Infrastructure\Repository\DoctrineUserRepository"
+    >
+        <id name="id" type="user_id">
+            <generator strategy="NONE" />
+        </id>
+        <field name="email" type="string" />
+        <field name="password" type="string" nullable="true"/>
+        <field name="roles" type="json">
+            <options>
+                <option name="default">["ROLE_USER"]</option>
+            </options>
+        </field>
+    </entity>
+</doctrine-mapping>
