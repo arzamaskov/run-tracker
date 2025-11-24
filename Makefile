@@ -70,6 +70,10 @@ backend-migrate: ## Выполнить миграции базы данных
 	docker-compose exec php-fpm php bin/console doctrine:migrations:migrate --no-interaction
 	@echo "$(GREEN)✓ Миграции выполнены$(NC)"
 
+backend-migrate-test:
+	docker compose exec -u 1000:1000 php-fpm php bin/console doctrine:migrations:migrate --no-interaction --env=test
+	@echo "$(GREEN)✓ Миграции для тестовой базы данных выполнены$(NC)"
+
 db-create: ## Создать базу данных
 	docker-compose exec php-fpm php bin/console doctrine:database:create --if-not-exists
 	@echo "$(GREEN)✓ База данных создана$(NC)"
@@ -122,6 +126,11 @@ db-restore: ## Восстановить базу из дампа (передат
 	@if [ -z "$(FILE)" ]; then echo "$(YELLOW)Укажите файл: make db-restore FILE=backup.sql$(NC)"; exit 1; fi
 	docker-compose exec -T postgres psql -U app -d app < $(FILE)
 	@echo "$(GREEN)✓ База восстановлена$(NC)"
+
+db-test-create: ## Создать тестовую базу данных
+	@echo "$(GREEN)Создание тестовой базы данных...$(NC)"
+	docker-compose exec -T postgres psql -U app -d postgres -c "CREATE DATABASE app_test;" || echo "База уже существует"
+	@echo "$(GREEN)✅ Тестовая БД создана$(NC)"
 
 # ============================================
 # Общие команды
