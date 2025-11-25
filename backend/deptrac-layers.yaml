@@ -1,0 +1,36 @@
+# Проверка нарушений принципов слоев
+deptrac:
+    path:
+        - ./src
+    layers:
+        - name: Domain
+          collectors:
+              - type: directory
+                value: /src/\w+/Domain/.*
+
+        - name: Application
+          collectors:
+              - type: directory
+                value: /src/\w+/Application/.*
+
+        - name: Infrastructure
+          collectors:
+              - type: directory
+                value: /src/\w+/Infrastructure/.*
+
+        - name: Presentation
+          collectors:
+              - type: directory
+                value: /src/\w+/Presentation/.*
+
+    ruleset:
+        Domain:
+        Application:
+            - Domain
+        Infrastructure:
+            - Domain
+            - Application
+        Presentation:
+            - Domain
+            - Application
+            - Infrastructure

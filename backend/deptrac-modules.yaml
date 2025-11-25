@@ -1,0 +1,20 @@
+# Проверка нарушений связанности между модулями
+deptrac:
+    path:
+        - ./src
+    exclude_files:
+        - '#.*\src/\.*\/Infrastructure\/Adapter\/.*#'
+    layers:
+        - name: Shared
+          collectors:
+              - type: directory
+                value: /src/Shared/.*
+        - name: Identity
+          collectors:
+              - type: directory
+                value: /src/Identity/.*
+
+
+    ruleset:
+        Identity:
+            - Shared

@@ -204,3 +204,24 @@ check: ## Проверить состояние проекта
 	@echo ""
 	@echo "$(YELLOW)Frontend:$(NC)"
 	@curl -s -o /dev/null -w "  http://localhost:5173 - %{http_code}\n" http://localhost:5173 || echo "  Недоступен"
+
+# ============================================
+# Качество кода
+# ============================================
+
+lint: ## Проверить код на соответствие стандартам (PHP CS Fixer)
+	docker-compose exec php-fpm ./vendor/bin/php-cs-fixer fix --dry-run --diff --verbose
+
+lint-fix: ## Автоматически исправить стиль кода (PHP CS Fixer)
+	docker-compose exec php-fpm ./vendor/bin/php-cs-fixer fix
+
+deptrac-layers: ## Проверить код на соответствие слоев архитектурным стандартам
+	docker-compose exec php-fpm ./vendor/bin/deptrac --config-file=deptrac-layers.yaml
+
+deptrac-modules: ## Проверить код на соответствие модулей архитектурным стандартам
+	docker-compose exec php-fpm ./vendor/bin/deptrac --config-file=deptrac-modules.yaml
+
+stan: ## Запустить статический анализ кода (PHPStan)
+	docker-compose exec php-fpm ./vendor/bin/phpstan analyse src tests --memory-limit=2G
+
+ci: lint deptrac-layers deptrac-modules stan test ## Комбо для локальной проверки перед git push
