@@ -28,7 +28,6 @@ backend-tests:
     POSTGRES_DB: test
     POSTGRES_USER: test
     POSTGRES_PASSWORD: test
-    DATABASE_URL: postgresql://test:test@postgres:5432/test
   
   before_script:
     - apt-get update && apt-get install -y libpq-dev libzip-dev zip git
