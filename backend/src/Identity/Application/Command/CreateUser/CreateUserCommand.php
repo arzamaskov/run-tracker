@@ -8,7 +8,6 @@ use App\Shared\Application\Command\CommandInterface;
 
 final readonly class CreateUserCommand implements CommandInterface
 {
-
     public function __construct(public string $email, public string $password)
     {
     }

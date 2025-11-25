@@ -13,7 +13,7 @@ final class CreateUserCommandHandler implements CommandHandlerInterface
 {
     public function __construct(
         private readonly UserRepositoryInterface $userRepository,
-        private readonly UserFactory $userFactory
+        private readonly UserFactory $userFactory,
     ) {
     }
 
@@ -21,6 +21,7 @@ final class CreateUserCommandHandler implements CommandHandlerInterface
     {
         $user = $this->userFactory->create($command->email, $command->password);
         $this->userRepository->add($user);
+
         return $user->id();
     }
 }
