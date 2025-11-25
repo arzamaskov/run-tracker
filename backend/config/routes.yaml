@@ -3,3 +3,9 @@ controllers:
         path: ../src/Shared/Presentation/Http/Controller/
         namespace: App\Shared\Presentation\Http\Controller
     type: attribute
+
+api_refresh_token:
+    path: /api/auth/token/refresh
+
+api_login_check:
+    path: /api/auth/token/login

@@ -9,11 +9,5 @@
         schema="identity"
         table="refresh_tokens"
     >
-        <id name="id" type="integer">
-            <generator strategy="AUTO" />
-        </id>
-        <field name="refreshToken" type="string" nullable="true" />
-        <field name="username" type="string" nullable="true" />
-        <field name="valid" type="datetime" nullable="true" />
     </entity>
 </doctrine-mapping>
