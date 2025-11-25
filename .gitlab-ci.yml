@@ -41,6 +41,7 @@ backend-tests:
       APP_ENV=test
       APP_SECRET=test_secret_for_ci
       DATABASE_URL=postgresql://test:test@postgres:5432/test
+      DEFAULT_URI=http://localhost
       EOF
     - curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
     - composer install --prefer-dist --no-progress --no-interaction
@@ -103,6 +104,14 @@ code-quality:
     - apt-get update && apt-get install -y libpq-dev libzip-dev zip git
     - docker-php-ext-install pdo_pgsql zip
     - cd backend
+    # Создать .env файл для Symfony
+    - |
+      cat > .env << 'EOF'
+      APP_ENV=test
+      APP_SECRET=test_secret_for_ci
+      DATABASE_URL=postgresql://test:test@localhost:5432/test
+      DEFAULT_URI=http://localhost
+      EOF
     - curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
     - composer install --prefer-dist --no-progress
   
