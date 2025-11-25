@@ -13,6 +13,8 @@ abstract class AbstractUuidType extends Type
 {
     abstract protected function getValueObjectClass(): string;
 
+    abstract public function getName(): string;
+
     public function getSQLDeclaration(array $column, AbstractPlatform $platform): string
     {
         return new GuidType()->getSQLDeclaration($column, $platform);
@@ -30,7 +32,7 @@ abstract class AbstractUuidType extends Type
             return $value->toString();
         }
 
-        throw ConversionException::conversionFailedInvalidType($value, static::class, ['null', $class]);
+        throw new ConversionException(sprintf('Could not convert PHP value "%s" of type "%s" to type "%s". Expected: null or %s', var_export($value, true), get_debug_type($value), $this->getName(), $class));
     }
 
     public function convertToPHPValue($value, AbstractPlatform $platform): ?object
@@ -44,7 +46,7 @@ abstract class AbstractUuidType extends Type
         try {
             return $class::fromString($value);
         } catch (\Throwable $e) {
-            throw ConversionException::conversionFailed($value, static::class);
+            throw new ConversionException(sprintf('Could not convert database value "%s" to type "%s"', $value, static::class), 0, $e);
         }
     }
 
