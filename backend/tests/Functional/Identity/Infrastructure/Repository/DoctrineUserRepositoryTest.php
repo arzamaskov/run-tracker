@@ -10,7 +10,6 @@ use App\Identity\Domain\Port\UserRepositoryInterface;
 use App\Identity\Infrastructure\Repository\DoctrineUserRepository;
 use App\Tests\Resource\Fixture\UserFixture;
 use App\Tests\Tools\FakerTools;
-use Faker\Factory;
 use Liip\TestFixturesBundle\Services\DatabaseToolCollection;
 use Liip\TestFixturesBundle\Services\DatabaseTools\AbstractDatabaseTool;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;

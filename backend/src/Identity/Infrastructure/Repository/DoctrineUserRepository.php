@@ -12,7 +12,6 @@ use Doctrine\Persistence\ManagerRegistry;
 
 final class DoctrineUserRepository extends ServiceEntityRepository implements UserRepositoryInterface
 {
-
     public function __construct(ManagerRegistry $registry)
     {
         parent::__construct($registry, User::class);
