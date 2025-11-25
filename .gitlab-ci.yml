@@ -35,6 +35,13 @@ backend-tests:
     - docker-php-ext-install pdo_pgsql zip
     - pecl install xdebug && docker-php-ext-enable xdebug
     - cd backend
+    # Создать .env файл для Symfony
+    - |
+      cat > .env << 'EOF'
+      APP_ENV=test
+      APP_SECRET=test_secret_for_ci
+      DATABASE_URL=postgresql://test:test@postgres:5432/test
+      EOF
     - curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
     - composer install --prefer-dist --no-progress --no-interaction
   
