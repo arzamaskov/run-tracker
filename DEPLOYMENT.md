@@ -144,25 +144,30 @@ docker-compose up -d
 
 ### Production на сервере
 
-Deployment автоматизирован через **GitHub Actions CD workflow**.
+Deployment автоматизирован через **GitLab CI/CD pipeline**.
 
 **Требования на сервере:**
 - Docker & Docker Compose
 - SSH доступ
 - 2GB RAM минимум
 
-**GitHub Secrets (Settings → Secrets):**
+**GitLab CI/CD Variables (Settings → CI/CD → Variables):**
+- `GITLAB_TOKEN` - Personal Access Token с правами `api` (для создания releases)
 - `DEPLOY_HOST` - IP/domain сервера
 - `DEPLOY_USER` - SSH username
-- `DEPLOY_KEY` - SSH private key
+- `DEPLOY_KEY` - SSH private key (тип: File)
 - `SLACK_WEBHOOK` - (опционально) для уведомлений
 
 **Процесс deployment:**
-1. Создайте release на GitHub (`v1.0.0`)
-2. CD workflow автоматически:
+1. Создайте тег (`v1.0.0`)
+2. Push тега в GitLab
+3. В pipeline вручную запустите job `create-release` (кнопка "Play")
+4. CD pipeline автоматически:
    - ✅ Соберет Docker images с version tags
    - ✅ Соберет frontend production bundle
    - ✅ Создаст backup текущей версии
+5. Вручную запустите `deploy-production` для deployment (кнопка "Play")
+6. Deployment:
    - ✅ Развернет новую версию
    - ✅ Выполнит миграции БД
    - ✅ Проверит health check
@@ -182,38 +187,42 @@ Deployment автоматизирован через **GitHub Actions CD workflo
 
 ---
 
-## 🔄 CI/CD Workflows
+## 🔄 CI/CD Pipeline
 
-### CI (Continuous Integration)
+### Stages
 
-**Триггеры:**
-- Push в `main`
-- Pull Requests в `main`
+GitLab CI/CD pipeline состоит из 5 стадий:
 
-**Выполняет:**
+**1. Test** (автоматически на push/MR):
 - ✅ Backend тесты (PHPUnit + PostgreSQL)
 - ✅ Frontend тесты (type check, build)
-- ✅ Code quality (PHPStan, ESLint)
+
+**2. Quality** (автоматически на Merge Requests):
+- ✅ Code quality (PHPStan, PHP CS Fixer, ESLint)
 - ✅ Security audit (composer, pnpm)
-- ✅ Docker images build (только при push в main)
 
-### CD (Continuous Deployment)
+**3. Build** (автоматически на main + tags):
+- ✅ Docker images build (php-fpm, nginx)
+- ✅ Push в GitLab Container Registry
 
-**Триггер:**
-- Release published (создание тега)
+**4. Release** (вручную для тегов):
+- ⏸️ Создание GitHub release с changelog (кнопка "Play")
+- ⏸️ Валидация формата тега
+- ⏸️ Группировка коммитов по типам
 
-**Выполняет:**
-- ✅ Build versioned images (v1.0.0, latest)
-- ✅ Deploy на production сервер
-- ✅ Run migrations
-- ✅ Health check + auto-rollback
+**5. Deploy** (вручную для production):
+- ⏸️ Deployment на production (кнопка "Play")
+- ⏸️ Миграции БД
+- ⏸️ Health check + auto-rollback
 
 **Процесс релиза:**
 ```bash
-# Создать release через GitHub CLI
-gh release create v1.0.0 --title "v1.0.0 - Feature Release"
+# 1. Создать и push тег
+git tag v1.0.0
+git push origin v1.0.0
 
-# Или через UI: Releases → Draft a new release
+# 2. В GitLab UI: Pipelines → выбрать pipeline → нажать Play на create-release
+# 3. После проверки release: нажать Play на deploy-production (если нужен deployment)
 ```
 
 ---
@@ -310,10 +319,11 @@ make ps                # Docker контейнеры
 make check             # Health check endpoints
 ```
 
-### GitHub Actions
-- **Actions tab** → workflow runs
+### GitLab Pipelines
+- **CI/CD → Pipelines** → pipeline runs
 - Email уведомления при ошибках
 - Slack notifications (если настроено)
+- Job logs для debugging
 
 ---
 

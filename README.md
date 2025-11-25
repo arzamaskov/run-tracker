@@ -127,11 +127,13 @@ pnpm test
 
 ## Deployment
 
-Production deployment автоматизирован через GitHub Actions.
+Production deployment автоматизирован через GitLab CI/CD.
 
-Создайте release на GitHub и deployment произойдет автоматически:
+Создайте тег и запустите release вручную через GitLab UI:
 ```bash
-gh release create v1.0.0
+git tag v1.0.0
+git push origin v1.0.0
+# Затем в GitLab: Pipelines → выберите pipeline → нажмите "Play" на create-release
 ```
 
 Подробности в [DEPLOYMENT.md](DEPLOYMENT.md)

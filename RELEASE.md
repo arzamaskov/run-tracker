@@ -8,19 +8,24 @@
 git tag v1.0.0 && git push origin v1.0.0
 ```
 
+**Затем в GitLab UI:**
+1. Перейдите в **CI/CD → Pipelines**
+2. Выберите pipeline для тега `v1.0.0`
+3. Нажмите кнопку **"Play" (▶️)** на job `create-release`
+
 **Автоматически происходит:**
 1. ✅ Генерация changelog из git commits
-2. ✅ Создание GitHub Release
+2. ✅ Создание GitLab Release
 3. ✅ Сборка production Docker images
-4. ✅ Деплой в production
+4. ⏸️ Deployment в production (запускается вручную кнопкой "Play" на `deploy-production`)
 
 ### Формат тегов
 
 ✅ **Правильно:**
 - `v1.0.0` - production release
 - `v1.2.3` - production release
-- `v2.0.0-beta.1` - pre-release (НЕ деплоится автоматически)
-- `v1.0.0-rc.1` - release candidate (НЕ деплоится автоматически)
+- `v2.0.0-beta.1` - pre-release (также запускается вручную)
+- `v1.0.0-rc.1` - release candidate (также запускается вручную)
 
 ❌ **Неправильно:**
 - `1.0.0` (нет префикса `v`)
@@ -95,8 +100,9 @@ git push origin --delete hotfix/v1.0.1
 git tag v1.1.0-beta.1 && git push origin v1.1.0-beta.1
 ```
 
-✅ Автоматически создаёт release, помеченный как **pre-release**  
-⚠️ **НЕ деплоится** автоматически в production
+✅ Pipeline запустится автоматически
+⏸️ Создание release - **вручную** через кнопку "Play" в GitLab UI
+📌 Автоматически помечается как **pre-release** при создании
 
 ---
 
@@ -104,15 +110,12 @@ git tag v1.1.0-beta.1 && git push origin v1.1.0-beta.1
 
 Если создали тег по ошибке:
 
-```bash
-# Удалить release и тег одной командой
-gh release delete v1.0.0 --yes && git push origin --delete v1.0.0 && git tag -d v1.0.0
-```
-
-Или пошагово:
+**В GitLab:**
+1. Перейдите в **Deployments → Releases**
+2. Найдите нужный release и удалите его
+3. Удалите тег:
 
 ```bash
-gh release delete v1.0.0 --yes    # Удалить GitHub release
 git push origin --delete v1.0.0   # Удалить remote tag
 git tag -d v1.0.0                 # Удалить local tag
 ```
@@ -155,14 +158,16 @@ docker-compose up -d
 ## 📊 Мониторинг
 
 **Где смотреть прогресс:**
-1. **GitHub Actions** → вкладка Actions → workflow runs
-2. **Slack** уведомления (если настроено)
-3. **Логи сервера**: `ssh user@server "docker-compose logs -f"`
+1. **GitLab CI/CD → Pipelines** → выбрать pipeline
+2. **Deployments → Releases** → список всех релизов
+3. **Slack** уведомления (если настроено)
+4. **Логи сервера**: `ssh user@server "docker-compose logs -f"`
 
-**GitHub Secrets (required):**
+**GitLab CI/CD Variables (Settings → CI/CD → Variables):**
+- `GITLAB_TOKEN` - Personal Access Token с правами `api`
 - `DEPLOY_HOST` - IP/domain сервера
 - `DEPLOY_USER` - SSH user
-- `DEPLOY_KEY` - SSH private key
+- `DEPLOY_KEY` - SSH private key (тип: File)
 - `SLACK_WEBHOOK` - (опционально)
 
 ---
@@ -170,4 +175,4 @@ docker-compose up -d
 ## 📚 См. также
 
 - [DEPLOYMENT.md](DEPLOYMENT.md) - Полная документация по deployment
-- [.github/workflows/release.yml](.github/workflows/release.yml) - Workflow автоматических релизов
+- [.gitlab-ci.yml](.gitlab-ci.yml) - GitLab CI/CD конфигурация
