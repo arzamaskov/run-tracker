@@ -9,7 +9,6 @@ use App\Identity\Domain\ValueObject\UserId;
 
 final class UserFactory
 {
-
     public function create(string $email, string $password): User
     {
         return new User(UserId::new(), $email, $password);

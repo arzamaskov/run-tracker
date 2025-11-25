@@ -12,7 +12,7 @@ final class User
         private readonly UserId $id,
         private string $email,
         private string $password,
-        private array $roles = ['ROLE_USER']
+        private array $roles = ['ROLE_USER'],
     ) {
     }
 
@@ -48,12 +48,10 @@ final class User
 
     public function addRole(string $role): void
     {
-        //
     }
 
     public function removeRole(string $role): void
     {
-        //
     }
 
     public function hasRole(string $role): bool

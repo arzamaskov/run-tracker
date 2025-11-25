@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Identity\Domain\ValueObject;
 
-use InvalidArgumentException;
 use Symfony\Component\Uid\Uuid;
 
 final readonly class UserId
@@ -21,7 +20,7 @@ final readonly class UserId
     public static function fromString(string $uuid): UserId
     {
         if (!Uuid::isValid($uuid)) {
-            throw new InvalidArgumentException("Invalid UUID format: $uuid");
+            throw new \InvalidArgumentException("Invalid UUID format: $uuid");
         }
 
         return new UserId(Uuid::fromString($uuid));
