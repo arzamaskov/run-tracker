@@ -226,8 +226,15 @@ jobs:
       - name: Stop old containers
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          # Останавливаем контейнеры в текущей директории
           ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
-            '[ -L /opt/run-app/current ] && cd /opt/run-app/current && docker compose down || true'
+            '[ -L /opt/run-app/current ] && cd /opt/run-app/current && docker compose down --remove-orphans || true'
+          # Останавливаем все контейнеры, использующие порт 80 (на случай, если они остались)
+          ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            'docker ps --filter "publish=80" --format "{{.ID}}" | xargs -r docker stop || true'
+          # Удаляем контейнеры, использующие порт 80
+          ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            'docker ps -a --filter "publish=80" --format "{{.ID}}" | xargs -r docker rm -f || true'
           
       - name: Create backup
         run: |
@@ -266,8 +273,13 @@ jobs:
       - name: Start containers
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          # Убеждаемся, что старые контейнеры остановлены
+          ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            'cd /opt/run-app/current && docker compose down --remove-orphans || true'
+          # Отключаем dev override если есть
           ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             'cd /opt/run-app/current && [ -f docker-compose.override.yml ] && mv docker-compose.override.yml docker-compose.override.yml.disabled || true'
+          # Запускаем новые контейнеры
           ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             'cd /opt/run-app/current && docker compose up -d'
           
