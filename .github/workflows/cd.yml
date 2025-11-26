@@ -226,10 +226,10 @@ jobs:
       - name: Stop old containers
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
-          # Останавливаем контейнеры в текущей директории (если симлинк существует)
-          # docker compose down автоматически освободит порты
+          # ВАЖНО: останавливаем контейнеры ДО переключения симлинка
+          # Используем старую директорию, на которую указывает симлинк
           ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
-            'if [ -L /opt/run-app/current ]; then cd /opt/run-app/current && docker compose down --remove-orphans || true; fi'
+            'if [ -L /opt/run-app/current ]; then OLD_DIR=$(readlink -f /opt/run-app/current) && cd "$OLD_DIR" && docker compose down --remove-orphans || true; fi'
           
       - name: Create backup
         run: |
