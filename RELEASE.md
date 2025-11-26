@@ -15,9 +15,9 @@ git tag v1.0.0 && git push origin v1.0.0
 
 **Автоматически происходит:**
 1. ✅ Генерация changelog из git commits
-2. ✅ Создание GitLab Release
+2. ✅ Создание GitHub Release
 3. ✅ Сборка production Docker images
-4. ⏸️ Deployment в production (запускается вручную кнопкой "Play" на `deploy-production`)
+4. ⏸️ Deployment в production (запускается вручную из GitHub Actions UI)
 
 ### Формат тегов
 
@@ -100,9 +100,8 @@ git push origin --delete hotfix/v1.0.1
 git tag v1.1.0-beta.1 && git push origin v1.1.0-beta.1
 ```
 
-✅ Pipeline запустится автоматически
-⏸️ Создание release - **вручную** через кнопку "Play" в GitLab UI
-📌 Автоматически помечается как **pre-release** при создании
+✅ Release создается автоматически
+📌 Автоматически помечается как **pre-release**
 
 ---
 
@@ -110,8 +109,8 @@ git tag v1.1.0-beta.1 && git push origin v1.1.0-beta.1
 
 Если создали тег по ошибке:
 
-**В GitLab:**
-1. Перейдите в **Deployments → Releases**
+**В GitHub:**
+1. Перейдите в **Releases**
 2. Найдите нужный release и удалите его
 3. Удалите тег:
 
@@ -133,13 +132,13 @@ git tag -d v1.0.0                 # Удалить local tag
 ```bash
 ssh user@production-server
 
-cd /var/www/runtracker
+cd /opt/run-app
 ls releases/  # Посмотреть доступные версии
 
 # Переключиться на предыдущую версию
 ln -sfn releases/v1.0.0 current
 cd current
-docker-compose up -d
+docker compose up -d
 ```
 
 ---
@@ -158,16 +157,16 @@ docker-compose up -d
 ## 📊 Мониторинг
 
 **Где смотреть прогресс:**
-1. **GitLab CI/CD → Pipelines** → выбрать pipeline
-2. **Deployments → Releases** → список всех релизов
+1. **GitHub Actions** → выбрать workflow run
+2. **Releases** → список всех релизов
 3. **Slack** уведомления (если настроено)
-4. **Логи сервера**: `ssh user@server "docker-compose logs -f"`
+4. **Логи сервера**: `ssh user@server "docker compose logs -f"`
 
-**GitLab CI/CD Variables (Settings → CI/CD → Variables):**
-- `GITLAB_TOKEN` - Personal Access Token с правами `api`
+**GitHub Secrets (Settings → Secrets and variables → Actions):**
 - `DEPLOY_HOST` - IP/domain сервера
 - `DEPLOY_USER` - SSH user
-- `DEPLOY_KEY` - SSH private key (тип: File)
+- `DEPLOY_KEY` - SSH private key
+- `DEPLOY_SSH_PORT` - (опционально) SSH порт
 - `SLACK_WEBHOOK` - (опционально)
 
 ---
@@ -175,4 +174,4 @@ docker-compose up -d
 ## 📚 См. также
 
 - [DEPLOYMENT.md](DEPLOYMENT.md) - Полная документация по deployment
-- [.gitlab-ci.yml](.gitlab-ci.yml) - GitLab CI/CD конфигурация
+- [.github/workflows/](.github/workflows/) - GitHub Actions конфигурация

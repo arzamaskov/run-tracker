@@ -1,0 +1,265 @@
+name: CD (Continuous Deployment)
+
+on:
+  # Production deployment on releases
+  release:
+    types: [published]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+
+  # Build production images (on release)
+  build-production-images:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      packages: write
+      
+    strategy:
+      matrix:
+        image: [php-fpm, nginx]
+        
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest
+            
+      - name: Build and push PHP-FPM
+        if: matrix.image == 'php-fpm'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./docker/php-fpm
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          target: production
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          
+      - name: Build and push Nginx
+        if: matrix.image == 'nginx'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/nginx/Dockerfile.production
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Build frontend for production
+  build-frontend:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          
+      - name: Enable Corepack
+        run: corepack enable
+        
+      - name: Install and build
+        working-directory: ./frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+        
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/build/
+          retention-days: 30
+
+  # Deploy to production (on release)
+  deploy-production:
+    if: github.event_name == 'release'
+    needs: [build-production-images, build-frontend]
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://runtracker.ru
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download frontend build
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/build/
+          
+      - name: Create deployment archive
+        run: |
+          [ ! -d "frontend/build" ] && mkdir -p frontend/build || echo "frontend/build found"
+          tar czf deploy.tar.gz \
+            --exclude='*.md' \
+            --exclude='.git*' \
+            --exclude='backend/vendor' \
+            --exclude='backend/.env*' \
+            docker-compose.yml \
+            docker-compose.override.yml \
+            .env.prod.example \
+            docker/ \
+            frontend/build/
+          echo "Archive size: $(du -sh deploy.tar.gz | cut -f1)"
+            
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          
+          # Write SSH key
+          echo "${{ secrets.DEPLOY_KEY }}" | tr -d '\r' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          
+          # Validate SSH key
+          if [ ! -f ~/.ssh/deploy_key ]; then
+            echo "ERROR: SSH key file was not created"
+            exit 1
+          fi
+          if [ ! -s ~/.ssh/deploy_key ]; then
+            echo "ERROR: SSH key file is empty"
+            exit 1
+          fi
+          if ! grep -qE "BEGIN.*PRIVATE KEY" ~/.ssh/deploy_key; then
+            echo "ERROR: SSH key format is invalid"
+            exit 1
+          fi
+          echo "SSH key format is valid"
+          
+          # Setup SSH agent
+          eval $(ssh-agent -s)
+          ssh-add ~/.ssh/deploy_key
+          
+          # Add host to known_hosts
+          SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          echo "Using SSH port: $SSH_PORT"
+          ssh-keyscan -p $SSH_PORT -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts || true
+          
+      - name: Upload deployment archive
+        run: |
+          SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          scp -P $SSH_PORT deploy.tar.gz ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/
+          
+      - name: Stop old containers
+        run: |
+          SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            '[ -L /opt/run-app/current ] && cd /opt/run-app/current && docker compose down || true'
+          
+      - name: Create backup
+        run: |
+          SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            '[ -d /opt/run-app/current ] && cp -r /opt/run-app/current /opt/run-app/backup-$(date +%Y%m%d-%H%M%S) || true'
+          
+      - name: Prepare release directory
+        run: |
+          SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            "mkdir -p /opt/run-app/releases/${{ github.ref_name }}"
+          
+      - name: Extract archive
+        run: |
+          SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            "cd /opt/run-app/releases/${{ github.ref_name }} && tar -xzf /tmp/deploy.tar.gz && rm /tmp/deploy.tar.gz && cp .env.prod.example .env"
+          
+      - name: Pull Docker images
+        run: |
+          SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            "docker login -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }} ${{ env.REGISTRY }}"
+          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/php-fpm:${{ github.ref_name }}"
+          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/nginx:${{ github.ref_name }}"
+          
+      - name: Switch to new release
+        run: |
+          SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            "ln -sfn /opt/run-app/releases/${{ github.ref_name }} /opt/run-app/current"
+          
+      - name: Start containers
+        run: |
+          SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            'cd /opt/run-app/current && [ -f docker-compose.override.yml ] && mv docker-compose.override.yml docker-compose.override.yml.disabled || true'
+          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            'cd /opt/run-app/current && docker compose up -d'
+          
+      - name: Run migrations and clear cache
+        run: |
+          SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          sleep 10
+          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            'cd /opt/run-app/current && docker compose exec -T php-fpm php bin/console doctrine:migrations:migrate --no-interaction'
+          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            'cd /opt/run-app/current && docker compose exec -T php-fpm php bin/console cache:clear --env=prod'
+          
+      - name: Cleanup old releases
+        run: |
+          SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            'cd /opt/run-app/releases && ls -t | tail -n +6 | xargs -r rm -rf'
+          
+      - name: Health check
+        run: |
+          sleep 5
+          curl -f https://runtracker.ru/api/health || exit 1
+          echo "✅ Deployment successful!"
+          
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            'cd /opt/run-app && if [ -d releases ] && [ -L current ]; then LAST_BACKUP=$(ls -t backup-* 2>/dev/null | head -1); if [ -n "$LAST_BACKUP" ]; then ln -sfn /opt/run-app/$LAST_BACKUP /opt/run-app/current && cd current && docker compose up -d || true && echo "Rolled back to $LAST_BACKUP"; fi; fi' || true
+          
+      - name: Notify deployment
+        if: always()
+        run: |
+          if [ -n "${{ secrets.SLACK_WEBHOOK }}" ]; then
+            if [ "${{ job.status }}" = "failure" ]; then
+              STATUS_EMOJI="❌"
+              STATUS_TEXT="Failed"
+            else
+              STATUS_EMOJI="✅"
+              STATUS_TEXT="Success"
+            fi
+            curl -X POST ${{ secrets.SLACK_WEBHOOK }} \
+              -H 'Content-Type: application/json' \
+              -d "{\"text\": \"$STATUS_EMOJI Production deployment ${{ github.ref_name }}: $STATUS_TEXT\"}" || true
+          fi

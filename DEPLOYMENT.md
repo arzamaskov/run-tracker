@@ -144,30 +144,32 @@ docker-compose up -d
 
 ### Production на сервере
 
-Deployment автоматизирован через **GitLab CI/CD pipeline**.
+Deployment автоматизирован через **GitHub Actions**.
 
 **Требования на сервере:**
 - Docker & Docker Compose
 - SSH доступ
 - 2GB RAM минимум
 
-**GitLab CI/CD Variables (Settings → CI/CD → Variables):**
-- `GITLAB_TOKEN` - Personal Access Token с правами `api` (для создания releases)
+**GitHub Secrets (Settings → Secrets and variables → Actions):**
 - `DEPLOY_HOST` - IP/domain сервера
 - `DEPLOY_USER` - SSH username
-- `DEPLOY_KEY` - SSH private key (тип: File)
+- `DEPLOY_KEY` - SSH private key
+- `DEPLOY_SSH_PORT` - (опционально) SSH порт (по умолчанию 22)
 - `SLACK_WEBHOOK` - (опционально) для уведомлений
 
 **Процесс deployment:**
 1. Создайте тег (`v1.0.0`)
-2. Push тега в GitLab
-3. В pipeline вручную запустите job `create-release` (кнопка "Play")
-4. CD pipeline автоматически:
+2. Push тега в GitHub
+3. GitHub Actions автоматически:
+   - ✅ Создаст release с changelog
    - ✅ Соберет Docker images с version tags
    - ✅ Соберет frontend production bundle
+4. Deployment можно запустить вручную:
+   - Перейдите в Actions → CD (Continuous Deployment)
+   - Нажмите "Run workflow"
+5. Deployment процесс:
    - ✅ Создаст backup текущей версии
-5. Вручную запустите `deploy-production` для deployment (кнопка "Play")
-6. Deployment:
    - ✅ Развернет новую версию
    - ✅ Выполнит миграции БД
    - ✅ Проверит health check
@@ -176,8 +178,8 @@ Deployment автоматизирован через **GitLab CI/CD pipeline**.
 
 **Структура на сервере:**
 ```
-/var/www/runtracker/
-├── current -> releases/v1.0.0
+/opt/run-app/
+├── current → releases/v1.0.0
 ├── releases/
 │   ├── v1.0.0/
 │   ├── v1.0.1/
@@ -189,31 +191,29 @@ Deployment автоматизирован через **GitLab CI/CD pipeline**.
 
 ## 🔄 CI/CD Pipeline
 
-### Stages
+### Workflows
 
-GitLab CI/CD pipeline состоит из 5 стадий:
+GitHub Actions состоит из 3 workflows:
 
-**1. Test** (автоматически на push/MR):
+**1. CI (Continuous Integration)** - автоматически на push/PR:
 - ✅ Backend тесты (PHPUnit + PostgreSQL)
 - ✅ Frontend тесты (type check, build)
-
-**2. Quality** (автоматически на Merge Requests):
-- ✅ Code quality (PHPStan, PHP CS Fixer, ESLint)
+- ✅ Code quality (PHPStan, PHP CS Fixer, Deptrac)
 - ✅ Security audit (composer, pnpm)
+- ✅ Docker images build (на main)
 
-**3. Build** (автоматически на main + tags):
-- ✅ Docker images build (php-fpm, nginx)
-- ✅ Push в GitLab Container Registry
+**2. Create Release** - автоматически на push тега:
+- ✅ Валидация формата тега
+- ✅ Генерация changelog
+- ✅ Создание GitHub release
+- ✅ Группировка коммитов по типам
 
-**4. Release** (вручную для тегов):
-- ⏸️ Создание GitHub release с changelog (кнопка "Play")
-- ⏸️ Валидация формата тега
-- ⏸️ Группировка коммитов по типам
-
-**5. Deploy** (вручную для production):
-- ⏸️ Deployment на production (кнопка "Play")
-- ⏸️ Миграции БД
-- ⏸️ Health check + auto-rollback
+**3. CD (Continuous Deployment)** - автоматически при создании release:
+- ✅ Build production Docker images
+- ✅ Build frontend
+- ⏸️ Deployment на production (можно запустить вручную)
+- ✅ Миграции БД
+- ✅ Health check + auto-rollback
 
 **Процесс релиза:**
 ```bash
@@ -221,8 +221,8 @@ GitLab CI/CD pipeline состоит из 5 стадий:
 git tag v1.0.0
 git push origin v1.0.0
 
-# 2. В GitLab UI: Pipelines → выбрать pipeline → нажать Play на create-release
-# 3. После проверки release: нажать Play на deploy-production (если нужен deployment)
+# 2. Release создается автоматически
+# 3. Deployment можно запустить вручную из GitHub Actions UI
 ```
 
 ---
@@ -319,8 +319,8 @@ make ps                # Docker контейнеры
 make check             # Health check endpoints
 ```
 
-### GitLab Pipelines
-- **CI/CD → Pipelines** → pipeline runs
+### GitHub Actions
+- **Actions** → workflow runs
 - Email уведомления при ошибках
 - Slack notifications (если настроено)
 - Job logs для debugging

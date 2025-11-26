@@ -369,132 +369,141 @@ deploy-production:
 
   environment:
     name: production
-    url: https://runtracker.yourdomain.com
+    url: https://runtracker.ru
 
   dependencies:
     - frontend-tests
 
   before_script:
-    - apk add --no-cache openssh-client rsync tar
-    - eval $(ssh-agent -s)
-    - echo "$DEPLOY_KEY" | tr -d '\r' | ssh-add -
+    - apk add --no-cache openssh-client rsync tar curl
     - mkdir -p ~/.ssh
     - chmod 700 ~/.ssh
-    - ssh-keyscan -H $DEPLOY_HOST >> ~/.ssh/known_hosts
+    - |
+      # Отладка: проверить доступные переменные
+      echo "Checking DEPLOY_KEY availability..."
+      echo "DEPLOY_KEY variable exists: $([ -n "$DEPLOY_KEY" ] && echo 'yes' || echo 'no')"
+      echo "DEPLOY_KEY as file exists: $([ -f "$DEPLOY_KEY" ] && echo 'yes' || echo 'no')"
+      if [ -f "$DEPLOY_KEY" ]; then
+        echo "DEPLOY_KEY is a file path: $DEPLOY_KEY"
+        cp "$DEPLOY_KEY" ~/.ssh/deploy_key
+      elif [ -n "$DEPLOY_KEY" ]; then
+        echo "DEPLOY_KEY is a variable, writing to file"
+        echo "$DEPLOY_KEY" | tr -d '\r' > ~/.ssh/deploy_key
+      else
+        echo "ERROR: DEPLOY_KEY is not set or not accessible"
+        echo "CI_COMMIT_TAG: $CI_COMMIT_TAG"
+        echo "CI_COMMIT_REF_NAME: $CI_COMMIT_REF_NAME"
+        echo ""
+        echo "Please check:"
+        echo "1. GitLab CI/CD Variables: Settings -> CI/CD -> Variables"
+        echo "2. Variable 'DEPLOY_KEY' exists and is not masked"
+        echo "3. Environment Scope includes tags (should be 'All' or include your tag)"
+        echo "4. If variable is Protected, your tag must be protected too"
+        exit 1
+      fi
+    - chmod 600 ~/.ssh/deploy_key
+    - |
+      # Проверка что файл создан и не пустой
+      if [ ! -f ~/.ssh/deploy_key ]; then
+        echo "ERROR: SSH key file was not created"
+        exit 1
+      fi
+      if [ ! -s ~/.ssh/deploy_key ]; then
+        echo "ERROR: SSH key file is empty"
+        exit 1
+      fi
+      # Проверка формата ключа
+      if ! grep -qE "BEGIN.*PRIVATE KEY" ~/.ssh/deploy_key; then
+        echo "ERROR: SSH key format is invalid"
+        echo "File size: $(wc -c < ~/.ssh/deploy_key) bytes"
+        echo "First 200 chars:"
+        head -c 200 ~/.ssh/deploy_key || true
+        exit 1
+      fi
+      echo "SSH key format is valid"
+    - eval $(ssh-agent -s)
+    - ssh-add ~/.ssh/deploy_key
+    - |
+      # SSH порт (по умолчанию 22)
+      SSH_PORT=${DEPLOY_SSH_PORT:-22}
+      echo "Using SSH port: $SSH_PORT"
+      ssh-keyscan -p $SSH_PORT -H $DEPLOY_HOST >> ~/.ssh/known_hosts || true
 
   script:
-    # Создать deployment архив
+    - echo "Deploying version $CI_COMMIT_TAG"
+    - echo "Creating deployment archive..."
     - |
-      tar czf deploy.tar.gz \
-        docker-compose.yml \
-        docker-compose.override.yml \
-        .env.prod.example \
-        docker/ \
-        frontend/build/ \
-        --exclude='*.md' \
-        --exclude='.git*'
-
-    # Скопировать на сервер
-    - scp deploy.tar.gz $DEPLOY_USER@$DEPLOY_HOST:/tmp/
-
-    # Deployment
-    - |
-      ssh $DEPLOY_USER@$DEPLOY_HOST << 'ENDSSH'
-        set -e
-
-        # Backup текущей версии
-        if [ -d /var/www/runtracker/current ]; then
-          cp -r /var/www/runtracker/current /var/www/runtracker/backup-$(date +%Y%m%d-%H%M%S)
-        fi
-
-        # Извлечь новую версию
-        cd /var/www/runtracker
-        mkdir -p releases/$CI_COMMIT_TAG
-        cd releases/$CI_COMMIT_TAG
-        tar xzf /tmp/deploy.tar.gz
-        rm /tmp/deploy.tar.gz
-
-        # Настройка production окружения
-        cp .env.prod.example .env
-
-        # Pull latest images
-        docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-        docker pull $CI_REGISTRY/$IMAGE_NAME/php-fpm:$CI_COMMIT_TAG
-        docker pull $CI_REGISTRY/$IMAGE_NAME/nginx:$CI_COMMIT_TAG
-
-        # Остановить старую версию
-        if [ -L /var/www/runtracker/current ]; then
-          cd /var/www/runtracker/current
-          docker-compose down
-        fi
-
-        # Переключиться на новую версию
-        ln -sfn /var/www/runtracker/releases/$CI_COMMIT_TAG /var/www/runtracker/current
-        cd /var/www/runtracker/current
-
-        # Отключить dev override
-        if [ -f docker-compose.override.yml ]; then
-          mv docker-compose.override.yml docker-compose.override.yml.disabled
-        fi
-
-        # Запустить сервисы
-        docker-compose up -d
-        sleep 10
-
-        # Выполнить миграции
-        docker-compose exec -T php-fpm php bin/console doctrine:migrations:migrate --no-interaction
-        docker-compose exec -T php-fpm php bin/console cache:clear --env=prod
-
-        # Очистка старых релизов (оставить последние 5)
-        cd /var/www/runtracker/releases
-        ls -t | tail -n +6 | xargs -r rm -rf
-
-        echo "✅ Deployment $CI_COMMIT_TAG completed!"
-      ENDSSH
-
+      [ ! -d "frontend/build" ] && mkdir -p frontend/build || echo "frontend/build found"
+    - tar czf deploy.tar.gz --exclude='*.md' --exclude='.git*' --exclude='backend/vendor' --exclude='backend/.env*' docker-compose.yml docker-compose.override.yml .env.prod.example docker/ frontend/build/
+    - echo "Archive size':' $(du -sh deploy.tar.gz | cut -f1)"
+    
+    # Upload archive
+    - echo "Uploading to server..."
+    - scp -P ${DEPLOY_SSH_PORT:-22} deploy.tar.gz $DEPLOY_USER@$DEPLOY_HOST:/tmp/
+    
+    # Stop old containers
+    - echo "Stopping old containers..."
+    - ssh -p ${DEPLOY_SSH_PORT:-22} $DEPLOY_USER@$DEPLOY_HOST '[ -L /opt/run-app/current ] && cd /opt/run-app/current && docker compose down || true'
+    
+    # Backup current release
+    - echo "Creating backup..."
+    - ssh -p ${DEPLOY_SSH_PORT:-22} $DEPLOY_USER@$DEPLOY_HOST '[ -d /opt/run-app/current ] && cp -r /opt/run-app/current /opt/run-app/backup-$(date +%Y%m%d-%H%M%S) || true'
+    
+    # Prepare new release directory
+    - echo "Preparing release directory..."
+    - ssh -p ${DEPLOY_SSH_PORT:-22} $DEPLOY_USER@$DEPLOY_HOST "mkdir -p /opt/run-app/releases/$CI_COMMIT_TAG"
+    
+    # Extract archive
+    - echo "Extracting archive..."
+    - ssh -p ${DEPLOY_SSH_PORT:-22} $DEPLOY_USER@$DEPLOY_HOST "cd /opt/run-app/releases/$CI_COMMIT_TAG && tar -xzf /tmp/deploy.tar.gz && rm /tmp/deploy.tar.gz && cp .env.prod.example .env"
+    
+    # Pull Docker images
+    - echo "Pulling Docker images..."
+    - ssh -p ${DEPLOY_SSH_PORT:-22} $DEPLOY_USER@$DEPLOY_HOST "docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY"
+    - ssh -p ${DEPLOY_SSH_PORT:-22} $DEPLOY_USER@$DEPLOY_HOST "docker pull $CI_REGISTRY/$IMAGE_NAME/php-fpm:$CI_COMMIT_TAG"
+    - ssh -p ${DEPLOY_SSH_PORT:-22} $DEPLOY_USER@$DEPLOY_HOST "docker pull $CI_REGISTRY/$IMAGE_NAME/nginx:$CI_COMMIT_TAG"
+    
+    # Switch to new release
+    - echo "Switching to new release..."
+    - ssh -p ${DEPLOY_SSH_PORT:-22} $DEPLOY_USER@$DEPLOY_HOST "ln -sfn /opt/run-app/releases/$CI_COMMIT_TAG /opt/run-app/current"
+    
+    # Start containers
+    - echo "Starting containers..."
+    - ssh -p ${DEPLOY_SSH_PORT:-22} $DEPLOY_USER@$DEPLOY_HOST 'cd /opt/run-app/current && [ -f docker-compose.override.yml ] && mv docker-compose.override.yml docker-compose.override.yml.disabled || true'
+    - ssh -p ${DEPLOY_SSH_PORT:-22} $DEPLOY_USER@$DEPLOY_HOST 'cd /opt/run-app/current && docker compose up -d'
+    
+    # Run migrations and clear cache
+    - echo "Running migrations..."
+    - sleep 10
+    - ssh -p ${DEPLOY_SSH_PORT:-22} $DEPLOY_USER@$DEPLOY_HOST 'cd /opt/run-app/current && docker compose exec -T php-fpm php bin/console doctrine:migrations:migrate --no-interaction'
+    - ssh -p ${DEPLOY_SSH_PORT:-22} $DEPLOY_USER@$DEPLOY_HOST 'cd /opt/run-app/current && docker compose exec -T php-fpm php bin/console cache:clear --env=prod'
+    
+    # Cleanup old releases (keep last 5)
+    - echo "Cleaning up old releases..."
+    - ssh -p ${DEPLOY_SSH_PORT:-22} $DEPLOY_USER@$DEPLOY_HOST 'cd /opt/run-app/releases && ls -t | tail -n +6 | xargs -r rm -rf'
+    
     # Health check
+    - echo "Running health check..."
     - sleep 5
-    - apk add --no-cache curl
-    - curl -f https://runtracker.yourdomain.com/api/health || exit 1
+    - curl -f https://runtracker.ru/api/health || exit 1
+    - echo "✅ Deployment successful!"
 
   after_script:
-    # Rollback при ошибке
     - |
       if [ "$CI_JOB_STATUS" = "failed" ]; then
-        ssh $DEPLOY_USER@$DEPLOY_HOST << 'ENDSSH'
-          cd /var/www/runtracker
-          LAST_BACKUP=$(ls -t backup-* | head -1)
-          if [ -n "$LAST_BACKUP" ]; then
-            ln -sfn /var/www/runtracker/$LAST_BACKUP /var/www/runtracker/current
-            cd current
-            docker-compose up -d
-            echo "⚠️ Rolled back to $LAST_BACKUP"
-          fi
-        ENDSSH
+        if [ -f ~/.ssh/deploy_key ]; then
+          SSH_PORT=${DEPLOY_SSH_PORT:-22}
+          ssh -p $SSH_PORT -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_HOST 'cd /opt/run-app && if [ -d releases ] && [ -L current ]; then LAST_BACKUP=$(ls -t backup-* 2>/dev/null | head -1); if [ -n "$LAST_BACKUP" ]; then ln -sfn /opt/run-app/$LAST_BACKUP /opt/run-app/current && cd current && docker compose up -d || true && echo "Rolled back to $LAST_BACKUP"; fi; fi' || true
+        fi
       fi
-
-    # Slack уведомление
     - |
       if [ -n "$SLACK_WEBHOOK" ]; then
-        STATUS_EMOJI="✅"
-        STATUS_TEXT="Success"
         if [ "$CI_JOB_STATUS" = "failed" ]; then
           STATUS_EMOJI="❌"
           STATUS_TEXT="Failed"
+        else
+          STATUS_EMOJI="✅"
+          STATUS_TEXT="Success"
         fi
-
-        curl -X POST $SLACK_WEBHOOK \
-          -H 'Content-Type: application/json' \
-          -d "{
-            \"text\": \"$STATUS_EMOJI Production deployment $CI_COMMIT_TAG: $STATUS_TEXT\",
-            \"blocks\": [
-              {
-                \"type\": \"section\",
-                \"text\": {
-                  \"type\": \"mrkdwn\",
-                  \"text\": \"*Production Deployment*\n*Tag:* $CI_COMMIT_TAG\n*Status:* $STATUS_TEXT\n*Pipeline:* $CI_PIPELINE_URL\"
-                }
-              }
-            ]
-          }"
+        curl -X POST $SLACK_WEBHOOK -H 'Content-Type: application/json' -d "{\"text\": \"$STATUS_EMOJI Production deployment $CI_COMMIT_TAG: $STATUS_TEXT\"}" || true
       fi
