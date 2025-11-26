@@ -221,71 +221,71 @@ jobs:
       - name: Upload deployment archive
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
-          scp -P $SSH_PORT deploy.tar.gz ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/
+          scp -i ~/.ssh/deploy_key -P $SSH_PORT deploy.tar.gz ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/
           
       - name: Stop old containers
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
-          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+          ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             '[ -L /opt/run-app/current ] && cd /opt/run-app/current && docker compose down || true'
           
       - name: Create backup
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
-          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+          ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             '[ -d /opt/run-app/current ] && cp -r /opt/run-app/current /opt/run-app/backup-$(date +%Y%m%d-%H%M%S) || true'
           
       - name: Prepare release directory
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
-          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+          ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             "mkdir -p /opt/run-app/releases/${{ needs.determine-tag.outputs.tag }}"
           
       - name: Extract archive
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
-          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+          ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             "cd /opt/run-app/releases/${{ needs.determine-tag.outputs.tag }} && tar -xzf /tmp/deploy.tar.gz && rm /tmp/deploy.tar.gz && cp .env.prod.example .env"
           
       - name: Pull Docker images
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
-          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+          ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             "docker login -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }} ${{ env.REGISTRY }}"
-          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+          ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/php-fpm:${{ needs.determine-tag.outputs.tag }}"
-          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+          ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/nginx:${{ needs.determine-tag.outputs.tag }}"
           
       - name: Switch to new release
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
-          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+          ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             "ln -sfn /opt/run-app/releases/${{ needs.determine-tag.outputs.tag }} /opt/run-app/current"
           
       - name: Start containers
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
-          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+          ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             'cd /opt/run-app/current && [ -f docker-compose.override.yml ] && mv docker-compose.override.yml docker-compose.override.yml.disabled || true'
-          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+          ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             'cd /opt/run-app/current && docker compose up -d'
           
       - name: Run migrations and clear cache
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
           sleep 10
-          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+          ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             'cd /opt/run-app/current && docker compose exec -T php-fpm composer install --no-dev --optimize-autoloader'
-          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+          ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             'cd /opt/run-app/current && docker compose exec -T php-fpm php bin/console doctrine:migrations:migrate --no-interaction'
-          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+          ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             'cd /opt/run-app/current && docker compose exec -T php-fpm php bin/console cache:clear --env=prod'
           
       - name: Cleanup old releases
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
-          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+          ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             'cd /opt/run-app/releases && ls -t | tail -n +6 | xargs -r rm -rf'
           
       - name: Health check
@@ -298,7 +298,7 @@ jobs:
         if: failure()
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
-          ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+          ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             'cd /opt/run-app && if [ -d releases ] && [ -L current ]; then LAST_BACKUP=$(ls -t backup-* 2>/dev/null | head -1); if [ -n "$LAST_BACKUP" ]; then ln -sfn /opt/run-app/$LAST_BACKUP /opt/run-app/current && cd current && docker compose up -d || true && echo "Rolled back to $LAST_BACKUP"; fi; fi' || true
           
       - name: Notify deployment
