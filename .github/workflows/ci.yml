@@ -148,7 +148,7 @@ jobs:
         
       - name: PHP CS Fixer
         working-directory: ./backend
-        run: vendor/bin/php-cs-fixer fix --config=.php-cs-fixer.dist.php --dry-run --diff --verbose src tests
+        run: vendor/bin/php-cs-fixer fix --dry-run --diff --verbose
         
       - name: PHPStan
         working-directory: ./backend
