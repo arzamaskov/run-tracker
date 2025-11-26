@@ -4,6 +4,13 @@ on:
   # Production deployment on releases
   release:
     types: [published]
+  # Также запускаем CD после успешного создания релиза через workflow
+  workflow_run:
+    workflows: ["Create Release"]
+    types:
+      - completed
+    branches:
+      - main
 
 env:
   REGISTRY: ghcr.io
@@ -11,9 +18,35 @@ env:
 
 jobs:
 
+  # Determine release tag
+  determine-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.set-tag.outputs.tag }}
+    steps:
+      - name: Set tag from event
+        id: set-tag
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "workflow_run" ]; then
+            # Извлекаем тег из head_ref или head_branch
+            # head_ref содержит ref (например, refs/tags/v1.0.0), head_branch - только имя
+            if [ -n "${{ github.event.workflow_run.head_ref }}" ]; then
+              TAG_NAME="${{ github.event.workflow_run.head_ref }}"
+            else
+              TAG_NAME="${{ github.event.workflow_run.head_branch }}"
+            fi
+            # Если это ref, извлекаем только имя тега
+            TAG_NAME=$(echo "$TAG_NAME" | sed 's|refs/heads/||' | sed 's|refs/tags/||')
+            echo "tag=$TAG_NAME" >> $GITHUB_OUTPUT
+          fi
+          echo "Determined tag: ${{ steps.set-tag.outputs.tag }}"
+
   # Build production images (on release)
   build-production-images:
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    needs: [determine-tag]
     runs-on: ubuntu-latest
     
     permissions:
@@ -25,7 +58,10 @@ jobs:
         image: [php-fpm, nginx]
         
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.determine-tag.outputs.tag }}
       
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -43,9 +79,10 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.image }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
+            type=semver,pattern={{version}},value=${{ needs.determine-tag.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.determine-tag.outputs.tag }}
+            type=semver,pattern={{major}},value=${{ needs.determine-tag.outputs.tag }}
+            type=raw,value=${{ needs.determine-tag.outputs.tag }}
             type=raw,value=latest
             
       - name: Build and push PHP-FPM
@@ -74,11 +111,15 @@ jobs:
 
   # Build frontend for production
   build-frontend:
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    needs: [determine-tag]
     runs-on: ubuntu-latest
     
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.determine-tag.outputs.tag }}
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -103,15 +144,18 @@ jobs:
 
   # Deploy to production (on release)
   deploy-production:
-    if: github.event_name == 'release'
-    needs: [build-production-images, build-frontend]
+    if: github.event_name == 'release' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    needs: [determine-tag, build-production-images, build-frontend]
     runs-on: ubuntu-latest
     environment:
       name: production
       url: https://runtracker.ru
     
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.determine-tag.outputs.tag }}
       
       - name: Download frontend build
         uses: actions/download-artifact@v4
@@ -189,13 +233,13 @@ jobs:
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
           ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
-            "mkdir -p /opt/run-app/releases/${{ github.ref_name }}"
+            "mkdir -p /opt/run-app/releases/${{ needs.determine-tag.outputs.tag }}"
           
       - name: Extract archive
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
           ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
-            "cd /opt/run-app/releases/${{ github.ref_name }} && tar -xzf /tmp/deploy.tar.gz && rm /tmp/deploy.tar.gz && cp .env.prod.example .env"
+            "cd /opt/run-app/releases/${{ needs.determine-tag.outputs.tag }} && tar -xzf /tmp/deploy.tar.gz && rm /tmp/deploy.tar.gz && cp .env.prod.example .env"
           
       - name: Pull Docker images
         run: |
@@ -203,15 +247,15 @@ jobs:
           ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             "docker login -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }} ${{ env.REGISTRY }}"
           ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
-            "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/php-fpm:${{ github.ref_name }}"
+            "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/php-fpm:${{ needs.determine-tag.outputs.tag }}"
           ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
-            "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/nginx:${{ github.ref_name }}"
+            "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/nginx:${{ needs.determine-tag.outputs.tag }}"
           
       - name: Switch to new release
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
           ssh -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
-            "ln -sfn /opt/run-app/releases/${{ github.ref_name }} /opt/run-app/current"
+            "ln -sfn /opt/run-app/releases/${{ needs.determine-tag.outputs.tag }} /opt/run-app/current"
           
       - name: Start containers
         run: |
@@ -264,5 +308,5 @@ jobs:
             fi
             curl -X POST ${{ secrets.SLACK_WEBHOOK }} \
               -H 'Content-Type: application/json' \
-              -d "{\"text\": \"$STATUS_EMOJI Production deployment ${{ github.ref_name }}: $STATUS_TEXT\"}" || true
+              -d "{\"text\": \"$STATUS_EMOJI Production deployment ${{ needs.determine-tag.outputs.tag }}: $STATUS_TEXT\"}" || true
           fi
