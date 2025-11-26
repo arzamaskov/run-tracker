@@ -47,10 +47,6 @@ jobs:
           key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
           restore-keys: ${{ runner.os }}-composer-
           
-      - name: Install dependencies
-        working-directory: ./backend
-        run: composer install --prefer-dist --no-progress --no-interaction
-        
       - name: Create .env file
         working-directory: ./backend
         run: |
@@ -60,6 +56,10 @@ jobs:
           DATABASE_URL=postgresql://test:test@localhost:5432/test?serverVersion=16
           DEFAULT_URI=http://localhost
           EOF
+
+      - name: Install dependencies
+        working-directory: ./backend
+        run: composer install --prefer-dist --no-progress --no-interaction
         
       - name: Run tests
         working-directory: ./backend
@@ -133,6 +133,16 @@ jobs:
           php-version: '8.4'
           tools: phpstan, php-cs-fixer
           
+      - name: Create .env file
+        working-directory: ./backend
+        run: |
+          cat > .env << 'EOF'
+          APP_ENV=test
+          APP_SECRET=test_secret_for_ci
+          DATABASE_URL=postgresql://test:test@localhost:5432/test?serverVersion=16
+          DEFAULT_URI=http://localhost
+          EOF
+
       - name: Install backend dependencies
         working-directory: ./backend
         run: composer install --prefer-dist --no-progress
