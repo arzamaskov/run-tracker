@@ -6,3 +6,6 @@ parameters:
         - public/
         - src/
         - tests/
+    excludePaths:
+        analyse:
+            - %currentWorkingDirectory%/tests/bootstrap.php
