@@ -94,18 +94,18 @@ shell: ## Войти в контейнер PHP-FPM
 # ============================================
 
 frontend-install: ## Установить зависимости frontend
-	cd frontend && pnpm install
+	docker-compose exec frontend pnpm install
 	@echo "$(GREEN)✓ Frontend зависимости установлены$(NC)"
 
 frontend-build: ## Собрать production версию frontend
-	cd frontend && pnpm build
+	docker-compose exec frontend pnpm build
 	@echo "$(GREEN)✓ Frontend собран$(NC)"
 
-frontend-dev: ## Запустить frontend dev server локально (вне Docker)
-	cd frontend && pnpm dev
+frontend-dev: ## Запустить frontend dev server (в Docker)
+	docker-compose exec frontend pnpm dev
 
 frontend-check: ## Проверить типы TypeScript
-	cd frontend && pnpm check
+	docker-compose exec frontend pnpm check
 	@echo "$(GREEN)✓ Типы проверены$(NC)"
 
 frontend-shell: ## Войти в контейнер frontend
