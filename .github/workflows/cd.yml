@@ -9,8 +9,6 @@ on:
     workflows: ["Create Release"]
     types:
       - completed
-    branches:
-      - main
 
 env:
   REGISTRY: ghcr.io
@@ -24,18 +22,26 @@ jobs:
     outputs:
       tag: ${{ steps.set-tag.outputs.tag }}
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Нужно для работы с тегами
+      
       - name: Set tag from event
         id: set-tag
         run: |
           if [ "${{ github.event_name }}" = "release" ]; then
             echo "tag=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
           elif [ "${{ github.event_name }}" = "workflow_run" ]; then
-            # Извлекаем тег из head_ref или head_branch
-            # head_ref содержит ref (например, refs/tags/v1.0.0), head_branch - только имя
+            # Извлекаем тег из head_ref (когда workflow запущен на теге)
+            # head_ref содержит refs/tags/v1.0.0 для тегов
             if [ -n "${{ github.event.workflow_run.head_ref }}" ]; then
               TAG_NAME="${{ github.event.workflow_run.head_ref }}"
-            else
+            elif [ -n "${{ github.event.workflow_run.head_branch }}" ]; then
               TAG_NAME="${{ github.event.workflow_run.head_branch }}"
+            else
+              # Если оба пустые, используем последний тег
+              TAG_NAME=$(git tag --sort=-v:refname | head -1)
             fi
             # Если это ref, извлекаем только имя тега
             TAG_NAME=$(echo "$TAG_NAME" | sed 's|refs/heads/||' | sed 's|refs/tags/||')
