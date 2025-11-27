@@ -313,6 +313,20 @@ jobs:
           ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             'cd /opt/run-app/current && docker compose up -d --remove-orphans --force-recreate'
 
+      - name: Sync PostgreSQL password
+        run: |
+          SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          sleep 5
+          # Синхронизируем пароль PostgreSQL, если база данных уже существует
+          # Используем суперпользователя postgres для изменения пароля
+          ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            'cd /opt/run-app/current && \
+             POSTGRES_PASSWORD=$(grep "^POSTGRES_PASSWORD=" .env | cut -d"=" -f2-) && \
+             POSTGRES_USER=$(grep "^POSTGRES_USER=" .env | cut -d"=" -f2- || echo "app") && \
+             if [ -n "$POSTGRES_PASSWORD" ]; then \
+               docker compose exec -T postgres psql -U postgres -d postgres -c "ALTER USER $POSTGRES_USER WITH PASSWORD '\''$POSTGRES_PASSWORD'\'';" 2>/dev/null || true; \
+             fi'
+
       - name: Run migrations and clear cache
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
