@@ -270,6 +270,14 @@ jobs:
                cp /opt/run-app/backend.env backend/.env; \
              else \
                cp backend/.env.prod.example backend/.env && echo 'WARNING: Using backend/.env.prod.example, please create /opt/run-app/backend.env with real secrets'; \
+             fi && \
+             # Sync POSTGRES_PASSWORD from .env to DATABASE_URL in backend/.env
+             POSTGRES_PASSWORD=\$(grep '^POSTGRES_PASSWORD=' .env | cut -d'=' -f2-) && \
+             if [ -n \"\$POSTGRES_PASSWORD\" ]; then \
+               POSTGRES_USER=\$(grep '^POSTGRES_USER=' .env | cut -d'=' -f2- || echo 'app') && \
+               POSTGRES_DB=\$(grep '^POSTGRES_DB=' .env | cut -d'=' -f2- || echo 'app') && \
+               sed -i \"s|postgresql://.*@postgres|postgresql://\$POSTGRES_USER:\$POSTGRES_PASSWORD@postgres|g\" backend/.env && \
+               sed -i \"s|/.*?serverVersion|/\$POSTGRES_DB?serverVersion|g\" backend/.env; \
              fi"
           # Create var directories (permissions will be set correctly by default or by Symfony)
           ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
@@ -301,9 +309,9 @@ jobs:
           # Останавливаем старые контейнеры (на случай если они остались запущенными)
           ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             'cd /opt/run-app/current && docker compose down || true'
-          # Запускаем новые контейнеры
+          # Запускаем новые контейнеры (пересоздаем контейнеры для применения новых переменных окружения)
           ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
-            'cd /opt/run-app/current && docker compose up -d --remove-orphans'
+            'cd /opt/run-app/current && docker compose up -d --remove-orphans --force-recreate'
 
       - name: Run migrations and clear cache
         run: |

@@ -21,6 +21,9 @@ services:
       target: ${BUILD_TARGET:-production}
     volumes:
       - ./backend:/var/www/backend
+    env_file:
+      - .env              # для docker compose переменных
+      - backend/.env      # для symfony переменных
     environment:
       APP_ENV: ${APP_ENV:-prod}
       APP_DEBUG: ${APP_DEBUG:-0}
