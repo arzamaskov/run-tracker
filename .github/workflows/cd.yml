@@ -169,6 +169,12 @@ jobs:
           name: frontend-build
           path: frontend/build/
 
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, intl, pdo_pgsql
+
       - name: Install backend dependencies
         run: |
           cd backend
