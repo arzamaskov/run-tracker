@@ -276,8 +276,8 @@ jobs:
              if [ -n \"\$POSTGRES_PASSWORD\" ]; then \
                POSTGRES_USER=\$(grep '^POSTGRES_USER=' .env | cut -d'=' -f2- || echo 'app') && \
                POSTGRES_DB=\$(grep '^POSTGRES_DB=' .env | cut -d'=' -f2- || echo 'app') && \
-               sed -i \"s|postgresql://.*@postgres|postgresql://\$POSTGRES_USER:\$POSTGRES_PASSWORD@postgres|g\" backend/.env && \
-               sed -i \"s|/.*?serverVersion|/\$POSTGRES_DB?serverVersion|g\" backend/.env; \
+               # Заменяем DATABASE_URL, сохраняя хост как postgres (имя сервиса в Docker Compose)
+               sed -i \"s|DATABASE_URL=.*|DATABASE_URL=\\\"postgresql://\$POSTGRES_USER:\$POSTGRES_PASSWORD@postgres:5432/\$POSTGRES_DB?serverVersion=16\\&charset=utf8\\\"|g\" backend/.env; \
              fi"
           # Create var directories (permissions will be set correctly by default or by Symfony)
           ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
