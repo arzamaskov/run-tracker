@@ -271,9 +271,10 @@ jobs:
              else \
                cp backend/.env.prod.example backend/.env && echo 'WARNING: Using backend/.env.prod.example, please create /opt/run-app/backend.env with real secrets'; \
              fi"
-          # Create var directories and set permissions
+          # Create var directories (permissions will be set correctly by default or by Symfony)
           ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
-            "cd /opt/run-app/releases/${{ needs.determine-tag.outputs.tag }}/backend && mkdir -p var/cache var/log && chmod -R 777 var"
+            "cd /opt/run-app/releases/${{ needs.determine-tag.outputs.tag }}/backend && \
+             mkdir -p var/cache var/log"
 
       - name: Pull Docker images
         run: |
