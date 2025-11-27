@@ -26,7 +26,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Нужно для работы с тегами
-      
+
       - name: Set tag from event
         id: set-tag
         run: |
@@ -54,31 +54,31 @@ jobs:
     if: github.event_name == 'release' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     needs: [determine-tag]
     runs-on: ubuntu-latest
-    
+
     permissions:
       contents: read
       packages: write
-      
+
     strategy:
       matrix:
         image: [php-fpm, nginx]
-        
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.determine-tag.outputs.tag }}
-      
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        
+
       - name: Log in to Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-          
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -90,7 +90,7 @@ jobs:
             type=semver,pattern={{major}},value=${{ needs.determine-tag.outputs.tag }}
             type=raw,value=${{ needs.determine-tag.outputs.tag }}
             type=raw,value=latest
-            
+
       - name: Build and push PHP-FPM
         if: matrix.image == 'php-fpm'
         uses: docker/build-push-action@v5
@@ -102,7 +102,7 @@ jobs:
           target: production
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          
+
       - name: Build and push Nginx
         if: matrix.image == 'nginx'
         uses: docker/build-push-action@v5
@@ -120,27 +120,27 @@ jobs:
     if: github.event_name == 'release' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     needs: [determine-tag]
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.determine-tag.outputs.tag }}
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          
+
       - name: Enable Corepack
         run: corepack enable
-        
+
       - name: Install and build
         working-directory: ./frontend
         run: |
           pnpm install --frozen-lockfile
           pnpm build
-        
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -156,19 +156,19 @@ jobs:
     environment:
       name: production
       url: https://runtracker.ru
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.determine-tag.outputs.tag }}
-      
+
       - name: Download frontend build
         uses: actions/download-artifact@v4
         with:
           name: frontend-build
           path: frontend/build/
-          
+
       - name: Create deployment archive
         run: |
           [ ! -d "frontend/build" ] && mkdir -p frontend/build || echo "frontend/build found"
@@ -184,16 +184,16 @@ jobs:
             backend/ \
             frontend/build/
           echo "Archive size: $(du -sh deploy.tar.gz | cut -f1)"
-            
+
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          
+
           # Write SSH key
           echo "${{ secrets.DEPLOY_KEY }}" | tr -d '\r' > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          
+
           # Validate SSH key
           if [ ! -f ~/.ssh/deploy_key ]; then
             echo "ERROR: SSH key file was not created"
@@ -208,21 +208,21 @@ jobs:
             exit 1
           fi
           echo "SSH key format is valid"
-          
+
           # Setup SSH agent
           eval $(ssh-agent -s)
           ssh-add ~/.ssh/deploy_key
-          
+
           # Add host to known_hosts
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
           echo "Using SSH port: $SSH_PORT"
           ssh-keyscan -p $SSH_PORT -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts || true
-          
+
       - name: Upload deployment archive
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
           scp -i ~/.ssh/deploy_key -P $SSH_PORT deploy.tar.gz ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/
-          
+
       - name: Stop old containers
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
@@ -230,25 +230,25 @@ jobs:
           # Используем старую директорию, на которую указывает симлинк
           ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             'if [ -L /opt/run-app/current ]; then OLD_DIR=$(readlink -f /opt/run-app/current) && cd "$OLD_DIR" && docker compose down --remove-orphans || true; fi'
-          
+
       - name: Create backup
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
           ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             '[ -d /opt/run-app/current ] && cp -r /opt/run-app/current /opt/run-app/backup-$(date +%Y%m%d-%H%M%S) || true'
-          
+
       - name: Prepare release directory
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
           ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             "mkdir -p /opt/run-app/releases/${{ needs.determine-tag.outputs.tag }}"
-          
+
       - name: Extract archive
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
           ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             "cd /opt/run-app/releases/${{ needs.determine-tag.outputs.tag }} && tar -xzf /tmp/deploy.tar.gz && rm /tmp/deploy.tar.gz && cp .env.prod.example .env"
-          
+
       - name: Pull Docker images
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
@@ -258,23 +258,26 @@ jobs:
             "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/php-fpm:${{ needs.determine-tag.outputs.tag }}"
           ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/nginx:${{ needs.determine-tag.outputs.tag }}"
-          
+
       - name: Switch to new release
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
           ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             "ln -sfn /opt/run-app/releases/${{ needs.determine-tag.outputs.tag }} /opt/run-app/current"
-          
+
       - name: Start containers
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
           # Отключаем dev override если есть
           ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             'cd /opt/run-app/current && [ -f docker-compose.override.yml ] && mv docker-compose.override.yml docker-compose.override.yml.disabled || true'
-          # Запускаем новые контейнеры (--remove-orphans удалит старые контейнеры, если они остались)
+          # Останавливаем старые контейнеры (на случай если они остались запущенными)
+          ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            'cd /opt/run-app/current && docker compose down || true'
+          # Запускаем новые контейнеры
           ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             'cd /opt/run-app/current && docker compose up -d --remove-orphans'
-          
+
       - name: Run migrations and clear cache
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
@@ -285,26 +288,26 @@ jobs:
             'cd /opt/run-app/current && docker compose exec -T php-fpm php bin/console doctrine:migrations:migrate --no-interaction'
           ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             'cd /opt/run-app/current && docker compose exec -T php-fpm php bin/console cache:clear --env=prod'
-          
+
       - name: Cleanup old releases
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
           ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             'cd /opt/run-app/releases && ls -t | tail -n +6 | xargs -r rm -rf'
-          
+
       - name: Health check
         run: |
           sleep 5
           curl -f https://runtracker.ru/api/health || exit 1
           echo "✅ Deployment successful!"
-          
+
       - name: Rollback on failure
         if: failure()
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
           ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
             'cd /opt/run-app && if [ -d releases ] && [ -L current ]; then LAST_BACKUP=$(ls -t backup-* 2>/dev/null | head -1); if [ -n "$LAST_BACKUP" ]; then ln -sfn /opt/run-app/$LAST_BACKUP /opt/run-app/current && cd current && docker compose up -d || true && echo "Rolled back to $LAST_BACKUP"; fi; fi' || true
-          
+
       - name: Notify deployment
         if: always()
         run: |
