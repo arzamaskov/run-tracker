@@ -178,7 +178,7 @@ jobs:
       - name: Install backend dependencies
         run: |
           cd backend
-          composer install --no-dev --optimize-autoloader --no-interaction
+          composer install --no-dev --optimize-autoloader --no-scripts --no-interaction
 
       - name: Create deployment archive
         run: |
