@@ -257,7 +257,7 @@ jobs:
         run: |
           SSH_PORT=${{ secrets.DEPLOY_SSH_PORT || 22 }}
           ssh -i ~/.ssh/deploy_key -p $SSH_PORT ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
-            "cd /opt/run-app/releases/${{ needs.determine-tag.outputs.tag }} && tar -xzf /tmp/deploy.tar.gz && rm /tmp/deploy.tar.gz && cp .env.prod.example .env"
+            "cd /opt/run-app/releases/${{ needs.determine-tag.outputs.tag }} && tar -xzf /tmp/deploy.tar.gz && rm /tmp/deploy.tar.gz && cp .env.prod.example .env && cp .env backend/.env"
 
       - name: Pull Docker images
         run: |
